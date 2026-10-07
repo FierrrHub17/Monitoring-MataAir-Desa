@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Monitoring Kualitas pH dan TDS Pada Mata Air</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-[#f4f7f6] font-sans text-slate-800 antialiased min-h-screen">
+
+  <!-- ================= HALAMAN LOGIN ================= -->
+  <div id="login-section" class="flex items-center justify-center min-h-screen p-4 bg-slate-100">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md border border-slate-200">
+      <div class="text-center mb-6">
+        <h2 class="text-2xl font-bold text-blue-600 uppercase tracking-wide">Login Sistem</h2>
+        <p class="text-sm text-slate-500 mt-1">Monitoring Kualitas pH dan TDS Pada Mata Air</p>
+      </div>
+      <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+        <input type="text" id="username" placeholder="Username" required class="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50 outline-none">
+        <input type="password" id="password" placeholder="Password" required class="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50 outline-none">
+        <div id="login-error" class="text-red-500 text-xs hidden text-center">Username/Password Salah!</div>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow transition">MASUK</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= DASHBOARD UTAMA ================= -->
+  <div id="dashboard-section" class="hidden min-h-screen flex flex-col">
+  
+    <!-- Header -->
+    <header class="bg-[#3b82f6] text-white sticky top-0 z-50 shadow-md">
+      <div class="max-w-7xl mx-auto px-4 md:px-8 py-3 flex justify-between items-center relative">
+        <h1 class="text-sm md:text-lg font-bold uppercase tracking-wide">Sistem Monitoring Kualitas pH dan TDS Air</h1>
+        
+        <div class="flex items-center space-x-3">
+          <span id="connection-status" class="px-3 py-1 text-[10px] md:text-xs font-bold rounded bg-slate-400 text-white tracking-widest">
+            OFFLINE
+          </span>
+          
+          <div class="relative">
+            <button onclick="toggleMenu()" class="text-white hover:text-slate-200 text-2xl px-2 focus:outline-none">⋮</button>
+            <div id="dropdown-menu" class="hidden absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden text-slate-800 z-50">
+              <button onclick="switchTab('monitoring')" class="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 font-medium">📈 Monitoring</button>
+              <button onclick="switchTab('info')" class="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 font-medium border-t">ℹ️ Info Standar Air</button>
+              <button onclick="switchTab('about')" class="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 font-medium border-t">📞 Kontak Admin</button>
+              <button onclick="handleLogout()" class="w-full text-left px-4 py-3 text-sm bg-red-50 text-red-600 hover:bg-red-100 font-bold border-t">Logout Keluar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 md:px-8 py-6 flex-grow w-full">
+
+      <!-- ================= TAB 1: MONITORING ================= -->
+      <div id="tab-monitoring" class="space-y-6 block">
+      
+        <!-- Card Sensor -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
+            <p class="text-xs text-slate-400 font-bold tracking-widest mb-2 uppercase">pH Air</p>
+            <h2 id="val-ph" class="text-5xl font-light text-slate-700">--.--</h2>
+            <p class="text-xs text-slate-300 mt-2">Standar: 6.5 - 8.5</p>
+          </div>
+          <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
+            <p class="text-xs text-slate-400 font-bold tracking-widest mb-2 uppercase">TDS Air (PPM)</p>
+            <h2 id="val-tds" class="text-5xl font-light text-slate-700">--</h2>
+            <p class="text-xs text-slate-300 mt-2">Standar: 0 - 500 ppm</p>
+          </div>
+        </div>
+
+        <!-- Grafik + Status Mesin -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100 lg:col-span-2">
+            <h3 class="text-xs text-slate-400 font-bold tracking-widest mb-4 uppercase">Grafik Fluktuasi Parameter</h3>
+            <div class="relative w-full h-[300px]">
+              <canvas id="sensorChart"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100 lg:col-span-1 flex flex-col">
+            <h3 class="text-xs text-slate-400 font-bold tracking-widest mb-4 uppercase">Status Filling Machine</h3>
+            
+            <div class="mb-5">
+              <p class="text-xs text-slate-400 mb-1">Status Kualitas Air:</p>
+              <span id="val-status" class="text-2xl font-bold text-slate-400 uppercase">MENUNGGU...</span>
+            </div>
+
+            <div class="mb-5">
+              <p class="text-xs text-slate-400 mb-1">Status Mesin:</p>
+              <span id="val-machine" class="text-xl font-bold text-slate-600 uppercase">OFFLINE</span>
+            </div>
+
+            <div class="mb-5">
+              <p class="text-xs text-slate-400 mb-1">Status Pengisian:</p>
+              <span id="val-stsp" class="text-xl font-bold text-slate-600 uppercase">IDLE</span>
+            </div>
+
+            <div class="mb-5">
+              <p class="text-xs text-slate-400 mb-1">Jumlah Botol:</p>
+              <span id="val-jmlhb" class="text-2xl font-bold text-slate-700">0</span>
+            </div>
+
+            <div class="mt-auto">
+              <p class="text-xs text-slate-400 tracking-widest mb-2 uppercase">Status Mesin Saat Ini</p>
+              <button id="btn-power" class="w-full py-4 rounded font-bold text-white shadow bg-slate-400 transition uppercase tracking-wider cursor-default">
+                MESIN: OFFLINE
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabel Riwayat -->
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+            <h3 class="text-xs text-slate-400 font-bold tracking-widest uppercase">Riwayat Status Kelayakan Mata Air</h3>
+            <a href="https://docs.google.com/spreadsheets/d/1chq22MMlEZBUVYMIwvWAn2cklaJFhMz4qDhb_MazqlU/edit?usp=sharing" target="_blank" 
+               class="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-4 rounded shadow transition-all flex items-center">
+               📄 Cek Live Google Sheet
+            </a>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm border-collapse">
+              <thead>
+                <tr class="border-b text-slate-400 uppercase text-xs">
+                  <th class="pb-3 px-2 font-medium">Waktu</th>
+                  <th class="pb-3 px-2 font-medium">pH Air</th>
+                  <th class="pb-3 px-2 font-medium">TDS (ppm)</th>
+                  <th class="pb-3 px-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body" class="divide-y divide-slate-100 text-slate-600">
+                <tr><td colspan="4" class="text-center py-6 text-slate-400">Belum ada data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= TAB 2: INFO STANDAR AIR ================= -->
+      <div id="tab-info" class="hidden space-y-8">
+
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
+          <h2 class="text-base font-bold text-slate-800 uppercase tracking-wide border-b pb-3 mb-2 flex items-center gap-2">
+            <span>ℹ️</span> Standar & Parameter Kualitas Air
+          </h2>
+          <p class="text-xs text-slate-500">
+            Panduan klasifikasi nilai pH dan TDS berdasarkan standar kelayakan konsumsi serta dampaknya terhadap kesehatan dan sistem peralatan/perpipaan.
+          </p>
+        </div>
+
+        <!-- TABEL 1: KLASIFIKASI pH AIR -->
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100 space-y-4">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h3 class="text-sm font-bold text-blue-600 uppercase tracking-wider">
+              1. Klasifikasi & Karakteristik pH Air (Rentang 0 - 10)
+            </h3>
+            <span class="text-xs font-semibold bg-blue-50 text-blue-600 px-3 py-1 rounded-full border border-blue-200">
+              Standar Ideal Air Minum: 6.5 - 8.5
+            </span>
+          </div>
+          <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="w-full text-left text-xs border-collapse min-w-[700px]">
+              <thead>
+                <tr class="bg-slate-100 text-slate-700 uppercase font-semibold border-b border-slate-200">
+                  <th class="py-3 px-4 w-28">Nilai pH</th>
+                  <th class="py-3 px-4 w-44">Sifat Air</th>
+                  <th class="py-3 px-4 w-44">Rasa</th>
+                  <th class="py-3 px-4">Dampak & Risiko</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 text-slate-600">
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="py-3.5 px-4 font-bold text-red-600 whitespace-nowrap">0,0 - 3,9</td>
+                  <td class="py-3.5 px-4 font-semibold text-slate-800">Asam Sangat Kuat / Korosif</td>
+                  <td class="py-3.5 px-4">Sangat asam, tajam, dan terasa logam (metallic)</td>
+                  <td class="py-3.5 px-4 space-y-1">
+                    <div><strong class="text-slate-800">Kesehatan:</strong> Iritasi mukosa saluran pencernaan, kerusakan email gigi, iritasi kulit/mata.</div>
+                    <div><strong class="text-slate-800">Sistem:</strong> Merusak instalasi pipa, melarutkan logam berat berbahaya (seperti timbal dan tembaga) dari perpipaan ke dalam air.</div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="py-3.5 px-4 font-bold text-amber-600 whitespace-nowrap">4,0 - 6,4</td>
+                  <td class="py-3.5 px-4 font-semibold text-slate-800">Asam Sedang - Lemah</td>
+                  <td class="py-3.5 px-4">Agak asam, sedikit sepat/pahit</td>
+                  <td class="py-3.5 px-4 space-y-1">
+                    <div><strong class="text-slate-800">Kesehatan:</strong> Potensi gangguan/iritasi lambung pada orang sensitif.</div>
+                    <div><strong class="text-slate-800">Sistem:</strong> Memicu korosi perlahan pada peralatan/pipa logam dan mengurangi efektivitas desinfeksi.</div>
+                  </td>
+                </tr>
+                <tr class="bg-emerald-50/70 hover:bg-emerald-100/60 transition border-l-4 border-l-emerald-500">
+                  <td class="py-3.5 px-4 font-bold text-emerald-700 whitespace-nowrap">
+                    <span class="flex items-center gap-1.5">
+                      6,5 - 8,5
+                      <span class="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.5 rounded">IDEAL</span>
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4 font-semibold text-emerald-900">Netral / Basa Lemah (Standar Ideal Air Minum)</td>
+                  <td class="py-3.5 px-4 text-emerald-900">Tawar, segar, dan netral</td>
+                  <td class="py-3.5 px-4 space-y-1 text-emerald-950">
+                    <div><strong class="text-emerald-900">Kesehatan:</strong> Sangat aman dikonsumsi, mendukung keseimbangan pH tubuh dan hidrasi optimal.</div>
+                    <div><strong class="text-emerald-900">Sistem:</strong> Tidak merusak pipa dan tidak menimbulkan kerak signifikan.</div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="py-3.5 px-4 font-bold text-amber-600 whitespace-nowrap">8,6 - 9,5</td>
+                  <td class="py-3.5 px-4 font-semibold text-slate-800">Basa Sedang (Alkali)</td>
+                  <td class="py-3.5 px-4">Agak pahit, terasa licin di mulut</td>
+                  <td class="py-3.5 px-4 space-y-1">
+                    <div><strong class="text-slate-800">Kesehatan:</strong> Dapat mengganggu tingkat keasaman alami lambung jika dikonsumsi berlebihan secara terus-menerus.</div>
+                    <div><strong class="text-slate-800">Sistem:</strong> Menurunkan efektivitas klorinasi dan memicu timbulnya endapan/kerak halus.</div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="py-3.5 px-4 font-bold text-purple-600 whitespace-nowrap">9,6 - 10,0+</td>
+                  <td class="py-3.5 px-4 font-semibold text-slate-800">Basa Kuat / Sangat Alkali</td>
+                  <td class="py-3.5 px-4">Pahit, sangat licin seperti sabun</td>
+                  <td class="py-3.5 px-4 space-y-1">
+                    <div><strong class="text-slate-800">Kesehatan:</strong> Iritasi pada kulit, mata, dan membran mukosa; dapat memicu rasa mual.</div>
+                    <div><strong class="text-slate-800">Sistem:</strong> Pembentukan kerak (scaling) parah pada pemanas air, ketel, dan perpipaan.</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TABEL 2: KLASIFIKASI TDS AIR -->
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-100 space-y-4">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h3 class="text-sm font-bold text-emerald-600 uppercase tracking-wider">
+              2. Klasifikasi & Karakteristik TDS Air (Rentang 0 - 500 ppm)
+            </h3>
+            <span class="text-xs font-semibold bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full border border-emerald-200">
+              Standar Kualitas Air Yang Dapat Diminum : 0 - 500 ppm
+            </span>
+          </div>
+          <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="w-full text-left text-xs border-collapse min-w-[800px]">
+              <thead>
+                <tr class="bg-slate-100 text-slate-700 uppercase font-semibold border-b border-slate-200">
+                  <th class="py-3 px-4 w-32">Rentang TDS (ppm)</th>
+                  <th class="py-3 px-4 w-44">Klasifikasi</th>
+                  <th class="py-3 px-4 w-40">Rasa</th>
+                  <th class="py-3 px-4 w-48">Karakter Air</th>
+                  <th class="py-3 px-4">Dampak & Risiko</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 text-slate-600">
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="py-3.5 px-4 font-bold text-slate-600 whitespace-nowrap">0 - 50</td>
+                  <td class="py-3.5 px-4 font-semibold text-slate-800">Sangat Rendah (Demineralized)</td>
+                  <td class="py-3.5 px-4">Datar, hambar, agak "kosong"</td>
+                  <td class="py-3.5 px-4">Sangat murni dari zat padat terlarut, daya hantar listrik sangat rendah, kapasitas buffer mineral minim.</td>
+                  <td class="py-3.5 px-4 space-y-1">
+                    <div><strong class="text-slate-800">Kesehatan:</strong> Kurang menyumbang asupan mineral esensial (kalsium & magnesium) harian.</div>
+                    <div><strong class="text-slate-800">Sistem:</strong> Cenderung sedikit korosif terhadap wadah atau saluran pipa logam tertentu.</div>
+                  </td>
+                </tr>
+                <tr class="bg-emerald-50/70 hover:bg-emerald-100/60 transition border-l-4 border-l-emerald-500">
+                  <td class="py-3.5 px-4 font-bold text-emerald-700 whitespace-nowrap">
+                    <span class="flex items-center gap-1.5">
+                      50 - 300
+                      <span class="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.5 rounded">IDEAL</span>
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4 font-semibold text-emerald-900">Baik / Ideal (Kualitas Tinggi)</td>
+                  <td class="py-3.5 px-4 text-emerald-900">Segar, tawar, enak di lidah</td>
+                  <td class="py-3.5 px-4 text-emerald-900">Seimbang; mengandung mineral mikro esensial harian dalam jumlah proporsional.</td>
+                  <td class="py-3.5 px-4 space-y-1 text-emerald-950">
+                    <div><strong class="text-emerald-900">Kesehatan:</strong> Sangat baik dan aman untuk konsumsi harian, hidrasi optimal.</div>
+                    <div><strong class="text-emerald-900">Sistem:</strong> Aman untuk sistem perpipaan dan tidak menyebabkan akumulasi kerak berbahaya.</div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="py-3.5 px-4 font-bold text-amber-600 whitespace-nowrap">301 - 500</td>
+                  <td class="py-3.5 px-4 font-semibold text-slate-800">Sedang (Fair)</td>
+                  <td class="py-3.5 px-4">Terasa agak tebal, sedikit keras (hard water)</td>
+                  <td class="py-3.5 px-4">Kandungan mineral padat terlarut lumayan tinggi, mendekati batas kenyamanan organoleptik.</td>
+                  <td class="py-3.5 px-4 space-y-1">
+                    <div><strong class="text-slate-800">Kesehatan:</strong> Masih dianggap aman oleh standar WHO/Permenkes.</div>
+                    <div><strong class="text-slate-800">Sistem:</strong> Mulai berpotensi meninggalkan endapan kapur/kerak pada peralatan dapur atau pemanas air.</div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="py-3.5 px-4 font-bold text-red-600 whitespace-nowrap">&gt; 500</td>
+                  <td class="py-3.5 px-4 font-semibold text-slate-800">Tinggi / Tidak Layak Minum</td>
+                  <td class="py-3.5 px-4">Pahit, asin, tebal, atau payau</td>
+                  <td class="py-3.5 px-4">Dominan zat terlarut tinggi (garam, natrium, sulfat, kalsium, atau nitrat); kemurnian rendah.</td>
+                  <td class="py-3.5 px-4 space-y-1">
+                    <div><strong class="text-slate-800">Kesehatan:</strong> Berpotensi memicu masalah pencernaan/diare (jika sulfat tinggi) dan memperberat kerja ginjal dalam jangka panjang.</div>
+                    <div><strong class="text-slate-800">Sistem:</strong> Kerak (scaling) parah pada peralatan, saluran air tersumbat, serta merusak mesin pemanas/boiler.</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= TAB 3: ABOUT ================= -->
+      <div id="tab-about" class="hidden bg-white rounded-lg shadow-sm border p-6 text-sm">
+        <h3 class="font-bold mb-2 text-lg">Kontak Admin Sistem</h3>
+        <p class="text-slate-600">Email: monioringairdesa@gmail.com</p>
+        <p class="mt-2 font-bold text-blue-600">Telp/WA: 0812-3456-7890</p>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
